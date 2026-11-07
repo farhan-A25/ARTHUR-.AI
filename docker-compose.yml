@@ -1,0 +1,62 @@
+# ARTHUR MVP — docker-compose
+# API + worker services. Postgres / Redis / pgvector are COMMENTED OUT
+# (Phase 5 — the MVP runs on SQLite only; uncomment to experiment later).
+
+services:
+  api:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./data:/app/data
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./requirements.txt:/app/requirements.txt
+    environment:
+      - DEMO_MODE=${DEMO_MODE:-true}
+      - ARTHUR_HOME=/app
+      - ARTHUR_DB_PATH=/app/data/arthur.db
+    command: >
+      sh -c "pip install -q -r requirements.txt &&
+             uvicorn backend.api.server:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+
+  worker:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./data:/app/data
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./requirements.txt:/app/requirements.txt
+    environment:
+      - DEMO_MODE=${DEMO_MODE:-true}
+      - ARTHUR_HOME=/app
+      - ARTHUR_DB_PATH=/app/data/arthur.db
+    command: >
+      sh -c "pip install -q -r requirements.txt &&
+             python backend/tasks/worker.py"
+
+  # ---- Phase 5 (commented): Postgres + Redis + pgvector ----
+  # profiles: ["phase5"]
+  #
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   profiles: ["phase5"]
+  #   environment:
+  #     - POSTGRES_USER=arthur
+  #     - POSTGRES_PASSWORD=arthur
+  #     - POSTGRES_DB=arthur
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   profiles: ["phase5"]
+  #   ports:
+  #     - "6379:6379"
+  #
+  # volumes:
+  #   pgdata:

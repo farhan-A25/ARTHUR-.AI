@@ -1,0 +1,19 @@
+# Secrets & private material — NEVER commit
+android-keystore/
+*.keystore
+*.db
+.env
+arthur.config.json
+data/
+logs/
+*.log
+
+# Build / dependency noise
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+*.apk
+*.aab
+.expo/

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARTHUR — Mission Control</title>
+<style>
+  :root{
+    --bg:#070b16; --panel:#0d1426; --panel2:#111a30; --line:#1e2a4a;
+    --txt:#dbe4ff; --dim:#8b97b8; --accent:#4de3ff; --accent2:#9d7bff;
+    --ok:#3ddc84; --warn:#ffb454; --bad:#ff5d6c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#101b3a 0%,var(--bg) 60%);
+       color:var(--txt);font-family:"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:14px 22px;
+         border-bottom:1px solid var(--line);background:rgba(7,11,22,.85);
+         position:sticky;top:0;z-index:10}
+  .logo{font-size:22px;font-weight:800;letter-spacing:3px;
+        background:linear-gradient(90deg,var(--accent),var(--accent2));
+        -webkit-background-clip:text;background-clip:text;color:transparent}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--ok);
+       box-shadow:0 0 10px var(--ok);display:inline-block;margin-right:6px}
+  .dot.off{background:var(--bad);box-shadow:0 0 10px var(--bad)}
+  .chip{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--panel2);
+        border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:14px}
+  .badge{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#04121a;
+         font-weight:700;font-size:11px;border-radius:10px;padding:2px 8px;letter-spacing:1px}
+  main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 22px;max-width:1400px;margin:0 auto}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-height:120px}
+  section.full{grid-column:1/-1}
+  h2{margin:0 0 10px;font-size:13px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--dim);font-weight:600}
+  .state{font-weight:700}
+  .state.COMPLETED{color:var(--ok)} .state.FAILED{color:var(--bad)}
+  .state.RUNNING{color:var(--accent)} .state.WAITING_FOR_APPROVAL,.state.WAITING_FOR_TOOL{color:var(--warn)}
+  .bar{background:#1a2440;border-radius:6px;height:8px;overflow:hidden;min-width:90px}
+  .bar>div{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .counts{display:flex;gap:10px;flex-wrap:wrap}
+  .count{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+         padding:8px 12px;font-size:12px;color:var(--dim)}
+  .count b{display:block;font-size:20px;color:var(--txt)}
+  .agent{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px}
+  .pill{font-size:11px;border:1px solid var(--line);border-radius:10px;padding:1px 8px;color:var(--dim)}
+  .appr{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);
+        border-radius:8px;margin-bottom:8px;background:var(--panel2);font-size:13px}
+  .appr button{margin-left:auto}
+  button{background:linear-gradient(90deg,var(--accent),var(--accent2));border:0;color:#04121a;
+         font-weight:700;border-radius:8px;padding:7px 14px;cursor:pointer}
+  button.deny{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  button:disabled{opacity:.4;cursor:default}
+  #logs{font-family:Consolas,monospace;font-size:12px;max-height:220px;overflow:auto;
+        background:#05080f;border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap}
+  #chatlog{height:220px;overflow:auto;background:#05080f;border:1px solid var(--line);
+           border-radius:8px;padding:10px;font-size:13px;margin-bottom:8px}
+  #chatlog .u{color:var(--accent)} #chatlog .a{color:var(--txt)}
+  #chatrow{display:flex;gap:8px}
+  #chatmsg{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+           border-radius:8px;padding:9px 12px;font-size:14px}
+  .dim{color:var(--dim);font-size:12px}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">ARTHUR</div>
+  <div><span class="dot" id="statusdot"></span><span id="statuslabel">connecting…</span></div>
+  <div class="chip" id="userchip"><span class="dim">no user</span></div>
+</header>
+<main>
+  <section>
+    <h2>Projects</h2>
+    <div id="projects" class="dim">loading…</div>
+  </section>
+  <section>
+    <h2>Active Agents</h2>
+    <div id="agents" class="dim">loading…</div>
+  </section>
+  <section class="full">
+    <h2>Tasks</h2>
+    <div class="counts" id="counts"></div>
+    <table style="margin-top:10px"><thead><tr><th>ID</th><th>Title</th><th>Agent</th><th>State</th><th>Attempts</th><th>Progress</th></tr></thead>
+    <tbody id="tasks"><tr><td colspan="6" class="dim">loading…</td></tr></tbody></table>
+  </section>
+  <section class="full">
+    <h2>Approvals</h2>
+    <div id="approvals" class="dim">loading…</div>
+  </section>
+  <section class="full">
+    <h2>Activity Log</h2>
+    <div id="logs">loading…</div>
+  </section>
+  <section class="full">
+    <h2>Chat</h2>
+    <div id="chatlog"></div>
+    <div id="chatrow">
+      <input id="chatmsg" placeholder="Give ARTHUR a goal… (or /projects /tasks /agents /approvals)" autocomplete="off">
+      <button id="chatsend">Send</button>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function jget(path){ const r = await fetch(path); if(!r.ok) throw new Error(r.status); return r.json(); }
+
+function stateClass(s){ return "state " + s; }
+function progressOf(t){
+  const order = ["CREATED","PLANNING","QUEUED","RUNNING","WAITING_FOR_TOOL","WAITING_FOR_APPROVAL","TESTING","RETRYING"];
+  if(t.state === "COMPLETED") return 100;
+  if(t.state === "FAILED") return 100;
+  const i = order.indexOf(t.state);
+  return i < 0 ? 0 : Math.round((i+1) / (order.length+1) * 100);
+}
+
+async function refresh(){
+  try{
+    const [status, projects, tasks, agents, approvals, logs] = await Promise.all([
+      jget("/api/status"), jget("/api/projects"), jget("/api/tasks"),
+      jget("/api/agents"), jget("/api/approvals"), jget("/api/logs?limit=60")
+    ]);
+    // header
+    $("statusdot").className = "dot" + (status.online ? "" : " off");
+    $("statuslabel").textContent = status.online
+      ? (status.demo_mode ? "online · DEMO_MODE" : "online") : "offline";
+    const u = status.current_user;
+    $("userchip").innerHTML = u
+      ? `<span>${esc(u.name)}</span>` + (u.is_admin ? `<span class="badge">Admin</span>` : "")
+      : `<span class="dim">no user</span>`;
+    // projects
+    $("projects").innerHTML = projects.length
+      ? "<table>" + projects.map(p => `<tr><td>[${p.id}]</td><td>${esc(p.name)}</td><td class="dim">${esc(p.status)}</td></tr>`).join("") + "</table>"
+      : `<span class="dim">(no projects yet)</span>`;
+    // agents
+    $("agents").innerHTML = agents.map(a =>
+      `<div class="agent"><b>${esc(a.name)}</b><span class="pill">${esc(a.kind)} · lvl ${a.permission_level}</span><span class="dim">${esc(a.status)}</span></div>`
+    ).join("");
+    // queue counts
+    const tc = status.counts.tasks || {};
+    const total = Object.values(tc).reduce((a,b)=>a+b,0);
+    $("counts").innerHTML =
+      `<div class="count"><b>${total}</b>total tasks</div>` +
+      Object.keys(tc).sort().map(k => `<div class="count"><b>${tc[k]}</b>${esc(k)}</div>`).join("") +
+      `<div class="count"><b>${status.counts.pending_approvals}</b>pending approvals</div>`;
+    // tasks
+    $("tasks").innerHTML = tasks.length ? tasks.map(t => {
+      const pct = progressOf(t);
+      return `<tr><td>${t.id}</td><td>${esc(t.title)}</td><td class="dim">${esc(t.agent)}</td>` +
+        `<td class="${stateClass(t.state)}">${esc(t.state)}</td><td class="dim">${t.attempts}/${t.max_attempts}</td>` +
+        `<td><div class="bar"><div style="width:${pct}%"></div></div></td></tr>`;
+    }).join("") : `<tr><td colspan="6" class="dim">(no tasks)</td></tr>`;
+    // approvals
+    $("approvals").innerHTML = approvals.length ? approvals.map(a =>
+      `<div class="appr"><div><b>[${a.id}] ${esc(a.kind)}</b> — ${esc(a.subject)}` +
+      `<div class="dim">requested by ${esc(a.requested_by || "?")} · ${esc(a.created_at || "")}</div></div>` +
+      `<button onclick="resolveAppr(${a.id}, true)">Approve</button>` +
+      `<button class="deny" onclick="resolveAppr(${a.id}, false)">Deny</button></div>`
+    ).join("") : `<span class="dim">(no pending approvals)</span>`;
+    // logs
+    $("logs").textContent = logs.slice().reverse().map(l =>
+      `${l.ts} [${l.agent||"?"}] ${l.tool||""} ${l.ok ? "OK" : "FAIL" + (l.error ? ": "+l.error : "")}`
+    ).join("\n") || "(no activity yet)";
+  }catch(e){
+    $("statusdot").className = "dot off";
+    $("statuslabel").textContent = "offline";
+  }
+}
+
+async function resolveAppr(id, approved){
+  await fetch(`/api/approvals/${id}/resolve`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({approved})
+  });
+  refresh();
+}
+
+function addChat(who, text){
+  const div = document.createElement("div");
+  div.innerHTML = `<b class="${who === "you" ? "u" : "a"}">${who === "you" ? "You" : "ARTHUR"}:</b> ${esc(text)}`;
+  $("chatlog").appendChild(div);
+  $("chatlog").scrollTop = $("chatlog").scrollHeight;
+}
+
+async function sendChat(){
+  const box = $("chatmsg");
+  const msg = box.value.trim();
+  if(!msg) return;
+  box.value = "";
+  addChat("you", msg);
+  try{
+    const r = await fetch("/api/chat", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({message: msg})
+    });
+    const data = await r.json();
+    addChat("arthur", data.reply || JSON.stringify(data));
+  }catch(e){
+    addChat("arthur", "Error: could not reach the API.");
+  }
+  refresh();
+}
+
+$("chatsend").onclick = sendChat;
+$("chatmsg").addEventListener("keydown", e => { if(e.key === "Enter") sendChat(); });
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
