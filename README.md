@@ -2,7 +2,7 @@
 
 **A personal AI agent platform that plans, delegates and executes work like a small team — while the owner keeps final control.** You describe a goal in plain language; ARTHUR's manager agent breaks it into tasks, specialist agents (researcher, developer, QA) execute them through a permissioned tool registry, risky actions stop for one-tap owner approval, and everything is written to a persistent memory and audit log.
 
-**Designed, built and owned by Mohammed Farhan** — sole owner and admin. Product and ownership record: [APP_DOSSIER.md](APP_DOSSIER.md).
+**Designed, built and owned by Mohammed Abdul Farhan** — sole owner and admin. Product and ownership record: [APP_DOSSIER.md](APP_DOSSIER.md).
 
 ### Why it stands out
 - 🧠 **Multi-agent orchestration** — a manager agent plans goals into a task queue; specialist agents claim and execute tasks atomically, with crash-safe retries and checkpointing

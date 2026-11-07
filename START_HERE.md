@@ -1,6 +1,6 @@
 # ARTHUR — Full App (START HERE)
 
-**Owner:** Mohammed Farhan
+**Owner:** Mohammed Abdul Farhan
 
 ## Run the whole app with one command
 

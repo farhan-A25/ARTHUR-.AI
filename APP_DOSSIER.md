@@ -1,7 +1,7 @@
 # ARTHUR — Project Dossier & Ownership Document
 
 **Document type:** Official product record
-**Owner / Creator:** Mohammed Farhan
+**Owner / Creator:** Mohammed Abdul Farhan
 **Project:** ARTHUR (Autonomous Reasoning & Task Handling Utility Runtime)
 **Version:** MVP 1.0
 **Date:** September 29, 2026
@@ -10,7 +10,7 @@
 
 ## 1. Creator & Ownership
 
-- **Created, designed, and owned by:** Mohammed Farhan 
+- **Created, designed, and owned by:** Mohammed Abdul Farhan 
 - **Role:** Sole Owner and sole Administrator of the ARTHUR system and mobile app.
 - Farhan is the originator of the ARTHUR concept, architecture, feature set, security model, and product vision.
 - All intellectual property, source code, branding, and data in this project belong to Farhan.
@@ -91,7 +91,7 @@ Structured tables: users, teams, team\_members, projects, tasks, agents, agent\_
 
 ## 8. Security Model
 
-- **Sole administrator:** Mohammed Farhan is the ONLY admin. No other admin accounts exist — no defaults, no backdoors, no system/agent admins.
+- **Sole administrator:** Mohammed Abdul Farhan is the ONLY admin. No other admin accounts exist — no defaults, no backdoors, no system/agent admins.
 - **No self-promotion:** only the owner can grant or revoke roles.
 - **App self-protection:** agents cannot modify ARTHUR's own code, configuration, roles, or permissions without explicit owner approval.
 - **Permission levels:** L0 READ → L1 LOW RISK → L2 EXTERNAL ACTIONS → L3 HIGH RISK (always requires explicit human approval).
@@ -113,7 +113,7 @@ Structured tables: users, teams, team\_members, projects, tasks, agents, agent\_
 
 | Field | Value |
 | --- | --- |
-| Administrator name | Mohammed Farhan |
+| Administrator name | Mohammed Abdul Farhan |
 | Role | Owner (sole admin) |
 | Admin powers | Full: user management, role assignment, approval of all levels incl. L3, security configuration, data export/deletion |
 | Admin restrictions | None — all app modifications are under the owner's control |

@@ -1,5 +1,5 @@
 # ARTHUR — Build & Run Guide
-**Owner: Mohammed Farhan** · App v1.1 · September 30, 2026
+**Owner: Mohammed Abdul Farhan** · App v1.1 · September 30, 2026
 
 ## What this is
 The complete ARTHUR app built from your files: Python backend (manager +
@@ -11,7 +11,7 @@ sign-in.
 1. Unzip anywhere, open a terminal in the `arthur-ai` folder.
 2. **Mac/Linux:** `bash start-arthur.sh` · **Windows:** double-click `start-arthur.bat`
    - First run creates the environment and installs everything automatically.
-   - First run asks for the **owner name** (use `Mohammed Farhan`) and sets the owner password.
+   - First run asks for the **owner name** (use `Mohammed Abdul Farhan`) and sets the owner password.
 3. Open the dashboard at http://localhost:8000, or run the phone app below.
 
 ## Phone app (Expo Go, free, no store needed)
