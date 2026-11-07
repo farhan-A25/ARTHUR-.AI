@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "package": "com.arthur.ai",
+      "versionCode": 12
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6137ba9f-a391-4b93-abeb-6b3df9384910"
+      }
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.arthur.ai",
+      "supportsTablet": true
+    },
+    "name": "ARTHUR",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#38e1ff",
+          "icon": "./assets/notification-icon.png"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "scheme": "arthur-ai",
+    "slug": "arthur-ai",
+    "userInterfaceStyle": "dark",
+    "version": "1.2.9",
+    "owner": "farhan25s-team"
+  }
+}
