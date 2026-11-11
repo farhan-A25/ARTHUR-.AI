@@ -17,6 +17,156 @@ ARTHUR_HOME = os.environ.get("ARTHUR_HOME", REPO_ROOT)
 DATA_DIR = os.path.join(ARTHUR_HOME, "data")
 DB_PATH = os.environ.get("ARTHUR_DB_PATH", os.path.join(DATA_DIR, "arthur.db"))
 
+# ----------------------------------------------------------------------------
+# Dialect selection
+#
+# When DATABASE_URL points at Postgres (postgres:// or postgresql:// —
+# e.g. a Neon database on the hosted deploy), persistence runs on
+# Postgres through the compatibility wrapper below. Otherwise the
+# original SQLite file database is used, completely unchanged.
+#
+# The wrapper exists so every other module can keep writing the
+# SQLite-flavoured SQL it already uses — ``?`` placeholders, cursor
+# ``lastrowid``, ``INSERT OR IGNORE``, manual BEGIN/COMMIT transaction
+# control — and have it translated here, in the one module that owns
+# persistence.
+# ----------------------------------------------------------------------------
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USING_POSTGRES = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
+
+def _translate_sql(sql):
+    """Translate one SQLite-flavoured statement to Postgres dialect."""
+    stmt = sql.strip()
+    if stmt.upper().startswith("BEGIN"):
+        # BEGIN IMMEDIATE / DEFERRED / EXCLUSIVE -> BEGIN
+        return "BEGIN"
+    tail = ""
+    if stmt.upper().startswith("INSERT OR IGNORE INTO"):
+        stmt = "INSERT INTO" + stmt[len("INSERT OR IGNORE INTO"):]
+        tail = " ON CONFLICT DO NOTHING"
+    stmt = stmt.rstrip(";").rstrip()
+    if stmt.upper().startswith("INSERT") and "RETURNING" not in stmt.upper():
+        # Emulate sqlite3's cursor.lastrowid: every ARTHUR table has an
+        # ``id`` identity column, so RETURNING id is always available.
+        tail += " RETURNING id"
+    return (stmt + tail).replace("?", "%s")
+
+
+class _PgRow:
+    """sqlite3.Row look-alike for Postgres result rows.
+
+    Supports row["column"], row[index], keys(), and dict(row) — the
+    only access patterns the codebase uses.
+    """
+
+    __slots__ = ("_cols", "_vals", "_index")
+
+    def __init__(self, cols, vals):
+        self._cols = tuple(cols)
+        self._vals = tuple(vals)
+        self._index = {c: i for i, c in enumerate(self._cols)}
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._vals[self._index[key]]
+        return self._vals[key]
+
+    def __iter__(self):
+        return iter(self._vals)
+
+    def __len__(self):
+        return len(self._vals)
+
+    def __contains__(self, key):
+        return key in self._index
+
+    def keys(self):
+        return list(self._cols)
+
+    def __repr__(self):
+        return repr(dict(zip(self._cols, self._vals)))
+
+
+class _PgCursor:
+    """Cursor wrapper: translates SQL and emulates sqlite3's lastrowid."""
+
+    def __init__(self, raw_cursor):
+        self._cur = raw_cursor
+        self._lastrowid = None
+
+    def execute(self, sql, params=()):
+        translated = _translate_sql(sql)
+        if params:
+            # sqlite3 stores Python bools as 1/0 in INTEGER columns;
+            # keep that behaviour instead of Postgres true/false.
+            params = tuple(
+                1 if p is True else 0 if p is False else p for p in params
+            )
+        self._cur.execute(translated, params if params else None)
+        if translated.upper().startswith("INSERT"):
+            row = self._cur.fetchone()
+            self._lastrowid = row[0] if row else None
+        return self
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    def _wrap(self, raw):
+        if raw is None:
+            return None
+        cols = [d[0] for d in self._cur.description]
+        return _PgRow(cols, raw)
+
+    def fetchone(self):
+        return self._wrap(self._cur.fetchone())
+
+    def fetchall(self):
+        return [self._wrap(r) for r in self._cur.fetchall()]
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+    def close(self):
+        self._cur.close()
+
+
+class _PgConnection:
+    """Connection wrapper exposing the sqlite3 API surface ARTHUR uses."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        return _PgCursor(self._raw.cursor()).execute(sql, params)
+
+    def cursor(self):
+        return _PgCursor(self._raw.cursor())
+
+    @property
+    def isolation_level(self):
+        return None if self._raw.autocommit else ""
+
+    @isolation_level.setter
+    def isolation_level(self, level):
+        # sqlite3 semantics: None = autocommit (the caller drives
+        # BEGIN/COMMIT itself), "" = deferred (commit() ends the txn).
+        self._raw.autocommit = level is None
+
+    def commit(self):
+        self._raw.commit()
+
+    def rollback(self):
+        self._raw.rollback()
+
+    def close(self):
+        self._raw.close()
+
 
 def now():
     """UTC ISO-8601 timestamp string (the canonical timestamp format)."""
@@ -24,11 +174,18 @@ def now():
 
 
 def get_conn():
-    """Open a SQLite connection: DATA_DIR created, Row factory, FK on.
+    """Open a connection to the ARTHUR database.
+
+    Postgres (via DATABASE_URL) returns the compatibility wrapper;
+    otherwise a SQLite connection: DATA_DIR created, Row factory, FK on.
 
     The database file is chmod 600 (owner read/write only) on every open —
     best effort, ignored where the platform forbids it.
     """
+    if USING_POSTGRES:
+        import psycopg2
+
+        return _PgConnection(psycopg2.connect(DATABASE_URL))
     os.makedirs(DATA_DIR, exist_ok=True)
     parent = os.path.dirname(os.path.abspath(DB_PATH))
     if parent:
@@ -194,12 +351,24 @@ _TABLES = [
 ]
 
 
+def _pg_ddl(sql):
+    """Translate one CREATE TABLE statement to Postgres dialect."""
+    return sql.replace(
+        "INTEGER PRIMARY KEY",
+        "INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY",
+    )
+
+
 def _init_fts(conn):
     """Create the memories_fts FTS5 table + sync triggers.
 
     Returns True when FTS5 is available; False when the SQLite build lacks
-    the FTS5 module (search_memories() then falls back to LIKE).
+    the FTS5 module (search_memories() then falls back to LIKE). Always
+    False on Postgres — there is no FTS5 there, and the same LIKE
+    fallback is used.
     """
+    if USING_POSTGRES:
+        return False
     try:
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(key, value)")
     except sqlite3.OperationalError:
@@ -264,7 +433,17 @@ def _migrate(conn):
 
     Currently: adds ``users.password_hash`` (bcrypt) when missing.
     """
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    if USING_POSTGRES:
+        cols = {
+            r["name"]
+            for r in conn.execute(
+                "SELECT column_name AS name FROM information_schema.columns"
+                " WHERE table_name = 'users'"
+                " AND table_schema = current_schema()"
+            )
+        }
+    else:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "password_hash" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
 
@@ -274,11 +453,23 @@ def init_db():
     conn = get_conn()
     try:
         for ddl in _TABLES:
-            conn.execute(ddl)
+            conn.execute(_pg_ddl(ddl) if USING_POSTGRES else ddl)
         _init_fts(conn)
         _migrate(conn)
         _seed(conn)
         conn.commit()
+    except Exception:
+        if USING_POSTGRES:
+            # A failed statement aborts the whole Postgres transaction
+            # (and psycopg2 errors are not sqlite3 errors, so the
+            # sqlite-oriented handlers elsewhere can never catch them).
+            # Roll back so the original error is the one that surfaces
+            # instead of a cascade of "transaction aborted" errors.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
     finally:
         conn.close()
 

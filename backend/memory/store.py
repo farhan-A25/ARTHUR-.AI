@@ -3,7 +3,7 @@
 import json
 import sqlite3
 
-from backend.database.db import get_conn, now
+from backend.database.db import USING_POSTGRES, get_conn, now
 
 
 def remember(kind, key, value):
@@ -51,6 +51,9 @@ def forget(kind, key):
 
 
 def _fts_available(conn):
+    if USING_POSTGRES:
+        # No FTS5 on Postgres — search_memories() uses its LIKE fallback.
+        return False
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories_fts'"
     ).fetchone()
@@ -89,7 +92,13 @@ def search_memories(query, kind=None, limit=10):
             except sqlite3.Error:
                 pass  # fall through to LIKE
         like = "%" + query + "%"
-        sql = "SELECT kind, key, value FROM memories WHERE (key LIKE ? OR value LIKE ?)"
+        # SQLite LIKE is case-insensitive; Postgres LIKE is not, so the
+        # fallback uses ILIKE there to keep the same matching behaviour.
+        op = "ILIKE" if USING_POSTGRES else "LIKE"
+        sql = (
+            "SELECT kind, key, value FROM memories "
+            "WHERE (key %s ? OR value %s ?)" % (op, op)
+        )
         params = [like, like]
         if kind is not None:
             sql += " AND kind = ?"

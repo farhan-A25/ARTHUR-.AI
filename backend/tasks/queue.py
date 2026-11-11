@@ -3,7 +3,7 @@
 import datetime
 import json
 
-from backend.database.db import get_conn, now
+from backend.database.db import USING_POSTGRES, get_conn, now
 from backend.memory.store import update_project_profile
 
 STATES = (
@@ -165,11 +165,16 @@ def claim_next():
         conn.isolation_level = None  # manual transaction control
         conn.execute("BEGIN IMMEDIATE")
         n = now()
+        # On Postgres, BEGIN IMMEDIATE becomes a plain BEGIN, which no
+        # longer serialises claimers by itself — lock the candidate rows
+        # instead so two workers cannot claim the same task. (SQLite
+        # keeps the original BEGIN IMMEDIATE behaviour.)
+        lock = " FOR UPDATE SKIP LOCKED" if USING_POSTGRES else ""
         rows = conn.execute(
             """SELECT * FROM tasks
                WHERE state = 'QUEUED'
                   OR (state = 'RETRYING' AND next_retry_at <= ?)
-               ORDER BY id ASC""",
+               ORDER BY id ASC""" + lock,
             (n,),
         ).fetchall()
         chosen = None
