@@ -8,6 +8,8 @@ import datetime
 import json
 import os
 import sqlite3
+import sys
+import time
 
 # ----------------------------------------------------------------------------
 # Paths
@@ -33,6 +35,61 @@ DB_PATH = os.environ.get("ARTHUR_DB_PATH", os.path.join(DATA_DIR, "arthur.db"))
 # ----------------------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 USING_POSTGRES = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
+
+def _boot_log(msg):
+    """Loud, flushed boot-stage log line (stderr).
+
+    Platform log capture (Render) can sit on buffered stdout forever;
+    stderr + flush=True makes boot progress — and boot failures —
+    visible in real time instead of a silent port-scan timeout.
+    """
+    print("[arthur db] %s" % msg, file=sys.stderr, flush=True)
+
+
+# Postgres connect hardening. libpq's default connect timeout is
+# INFINITE: against an endpoint that accepts the TCP connection but
+# never completes the Postgres handshake (or silently drops packets),
+# psycopg2.connect() blocks forever — that is what hung the first
+# hosted boot for 15 minutes with zero log output. Every connect is
+# therefore bounded, and a bounded retry rides out Neon scale-to-zero
+# wake-ups (the first connect to a sleeping compute can fail or time
+# out while it starts). Worst case is ~35s, then the real error raises.
+_PG_CONNECT_TIMEOUT = int(os.environ.get("ARTHUR_PG_CONNECT_TIMEOUT", "10"))
+_PG_CONNECT_ATTEMPTS = 3
+_PG_RETRY_SLEEP = 2
+
+
+def _pg_connect():
+    """Connect to Postgres with a bounded timeout + bounded retry.
+
+    ``connect_timeout`` is passed as a keyword argument, so a
+    DATABASE_URL that already carries query parameters (e.g.
+    ``?sslmode=require``) keeps working — psycopg2 merges DSN params
+    with keyword arguments. The DSN itself is never logged (it carries
+    the password). Raises the last OperationalError after all attempts.
+    """
+    import psycopg2
+
+    last_exc = None
+    for attempt in range(1, _PG_CONNECT_ATTEMPTS + 1):
+        try:
+            return psycopg2.connect(
+                DATABASE_URL, connect_timeout=_PG_CONNECT_TIMEOUT
+            )
+        except psycopg2.OperationalError as exc:
+            last_exc = exc
+            _boot_log(
+                "postgres connect attempt %d/%d failed: %s"
+                % (
+                    attempt,
+                    _PG_CONNECT_ATTEMPTS,
+                    (str(exc).strip().splitlines() or [""])[0],
+                )
+            )
+            if attempt < _PG_CONNECT_ATTEMPTS:
+                time.sleep(_PG_RETRY_SLEEP)
+    raise last_exc
 
 
 def _translate_sql(sql):
@@ -183,9 +240,7 @@ def get_conn():
     best effort, ignored where the platform forbids it.
     """
     if USING_POSTGRES:
-        import psycopg2
-
-        return _PgConnection(psycopg2.connect(DATABASE_URL))
+        return _PgConnection(_pg_connect())
     os.makedirs(DATA_DIR, exist_ok=True)
     parent = os.path.dirname(os.path.abspath(DB_PATH))
     if parent:
@@ -450,15 +505,31 @@ def _migrate(conn):
 
 def init_db():
     """Create all tables (idempotent) and seed owner + agents."""
+    _boot_log(
+        "init_db: starting (dialect=%s)"
+        % ("postgres" if USING_POSTGRES else "sqlite")
+    )
+    stage = "connect"
     conn = get_conn()
     try:
+        stage = "schema"
         for ddl in _TABLES:
             conn.execute(_pg_ddl(ddl) if USING_POSTGRES else ddl)
+        _boot_log("init_db: schema ok")
+        stage = "fts"
         _init_fts(conn)
+        stage = "migrate"
         _migrate(conn)
+        _boot_log("init_db: migrate ok")
+        stage = "seed"
         _seed(conn)
         conn.commit()
-    except Exception:
+        _boot_log("init_db: complete")
+    except Exception as exc:
+        _boot_log(
+            "init_db: FAILED at stage %s (%s: %s)"
+            % (stage, type(exc).__name__, exc)
+        )
         if USING_POSTGRES:
             # A failed statement aborts the whole Postgres transaction
             # (and psycopg2 errors are not sqlite3 errors, so the
